@@ -1,0 +1,50 @@
+name: 🚀 Kono-Ha Manual Build (UI)
+on:
+  workflow_dispatch:
+    inputs:
+      hz:
+        description: 'Pilih Responsivitas (HZ)'
+        required: true
+        type: choice
+        options: ['100', '250', '500', '1000']
+        default: '500'
+      variant:
+        description: 'Varian Dasar'
+        required: true
+        type: choice
+        options: ['stock', 'root', 'susfs']
+        default: 'root'
+      ksu_flavor:
+        description: 'Pilih Rasa Root (Hanya jika varian root/susfs)'
+        required: true
+        type: choice
+        options:
+          - official
+          - ksu-next
+          - sukisu
+          - resukisu
+          - mambosu
+          - wild-ksu
+          - none
+        default: 'ksu-next'
+      kpm:
+        description: 'Aktifkan KPM (Kernel Patch Module)?'
+        required: true
+        type: boolean
+        default: false
+      hardened:
+        description: 'Gunakan Mode Hardened?'
+        required: true
+        type: boolean
+        default: false
+
+jobs:
+  trigger-engine:
+    uses: ./.github/workflows/konoha-engine.yml
+    with:
+      hz: ${{ inputs.hz }}
+      variant: ${{ inputs.variant }}
+      ksu_flavor: ${{ inputs.ksu_flavor }}
+      kpm: ${{ inputs.kpm }}
+      hardened: ${{ inputs.hardened }}
+    secrets: inherit
