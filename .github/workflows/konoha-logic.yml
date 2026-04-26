@@ -1,0 +1,78 @@
+name: Kono-Ha Build Logic
+on:
+  workflow_call:
+    inputs:
+      hz: { required: true, type: string }
+      ksu_flavor: { required: true, type: string }
+      kpm: { required: true, type: boolean }
+      hardened: { required: true, type: boolean }
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🏗️ Setup Env
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc build-essential flex bison lld llvm-dev libssl-dev ccache libelf-dev rsync python3 git-lfs
+
+      - name: 🛠️ Patching Mechanic
+        run: |
+          # Cari root kernel (msm-kernel/common) secara dinamis
+          KROOT=$(find . -name "drivers" -type d | grep -E "common|msm-kernel" | head -n 1 | xargs dirname)
+          cd $KROOT
+          
+          FLAVOR="${{ inputs.ksu_flavor }}"
+          
+          # Logika Suntik Root - WildKSU Masuk Pak Eko!
+          case "$FLAVOR" in
+            "official")
+              curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main ;;
+            "ksu-next")
+              curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/main/kernel/setup.sh" | bash -s main ;;
+            "wild-ksu")
+              curl -LSs "https://raw.githubusercontent.com/Wild-KSU/WildKSU/main/kernel/setup.sh" | bash -s main ;;
+            "sukisu"|"resukisu"|"mambosu")
+              echo "Applying $FLAVOR via your internal repo patcher..." ;;
+          esac
+
+          # Anti-Recursive Kconfig
+          if [ -f drivers/Kconfig ]; then
+            sed -i '/kernelsu/d' drivers/Kconfig
+            echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
+          fi
+
+      - name: 🚀 Build Sun (Bazel/Kleaf)
+        run: |
+          cd kernel_platform
+          chmod +x build/android/prepare_vendor.sh
+          chmod +x build/build_sun.sh
+          
+          ./build/android/prepare_vendor.sh sun
+          
+          # Logic LTO dari KPM input
+          LTO_VAL=$([[ "${{ inputs.kpm }}" == "true" ]] && echo "thin" || echo "full")
+          
+          # Hajar Bleh!
+          LTO=$LTO_VAL HZ=${{ inputs.hz }} ./build/build_sun.sh
+
+      - name: 📦 Packaging
+        run: |
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3
+          IMAGE=$(find kernel_platform/out -name "Image" | head -n 1)
+          if [ -f "$IMAGE" ]; then
+            cp "$IMAGE" AnyKernel3/
+            cd AnyKernel3
+            zip -r9 "../Kono-Ha-${{ inputs.ksu_flavor }}-${{ inputs.hz }}hz.zip" .
+          else
+            echo "IMAGE NOT FOUND!" && exit 1
+          fi
+
+      - name: 📤 Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kono-Ha-${{ inputs.ksu_flavor }}-${{ inputs.hz }}hz
+          path: "*.zip"
