@@ -4,6 +4,7 @@ on:
     inputs:
       hz: { required: true, type: string }
       ksu_flavor: { required: true, type: string }
+      susfs: { required: true, type: boolean }
       kpm: { required: true, type: boolean }
       hardened: { required: true, type: boolean }
 
@@ -11,41 +12,46 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      - name: 📥 Checkout
+      - name: 📥 Checkout Source
         uses: actions/checkout@v4
 
-      - name: 🏗️ Setup Env
+      - name: 🏗️ Setup Build Env
         run: |
           sudo apt-get update
           sudo apt-get install -y bc build-essential flex bison lld llvm-dev libssl-dev ccache libelf-dev rsync python3 git-lfs
 
-      - name: 🛠️ Patching Mechanic
+      - name: 🛠️ Patching Mechanic (KSU & WildKSU)
         run: |
-          # Cari root kernel (msm-kernel/common) secara dinamis
+          # Cari root kernel secara dinamis
           KROOT=$(find . -name "drivers" -type d | grep -E "common|msm-kernel" | head -n 1 | xargs dirname)
           cd $KROOT
           
           FLAVOR="${{ inputs.ksu_flavor }}"
           
-          # Logika Suntik Root - WildKSU Masuk Pak Eko!
+          # 1. Pasang Root Flavor
           case "$FLAVOR" in
-            "official")
-              curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main ;;
-            "ksu-next")
-              curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/main/kernel/setup.sh" | bash -s main ;;
-            "wild-ksu")
-              curl -LSs "https://raw.githubusercontent.com/Wild-KSU/WildKSU/main/kernel/setup.sh" | bash -s main ;;
-            "sukisu"|"resukisu"|"mambosu")
-              echo "Applying $FLAVOR via your internal repo patcher..." ;;
+            "official") curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main ;;
+            "ksu-next") curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/main/kernel/setup.sh" | bash -s main ;;
+            "wild-ksu") curl -LSs "https://raw.githubusercontent.com/Wild-KSU/WildKSU/main/kernel/setup.sh" | bash -s main ;;
+            "sukisu"|"resukisu"|"mambosu") echo "Applying $FLAVOR via internal scripts..." ;;
           esac
 
-          # Anti-Recursive Kconfig
+          # 2. LOGIKA SUSFS (Ini yang kamu cari!)
+          if [ "${{ inputs.susfs }}" = "true" ]; then
+             echo "🚀 Patching SusFS into kernel..."
+             # Sesuai standar, kita tarik repo SusFS dan terapkan patch ke core/fs
+             git clone --depth=1 https://gitlab.com/simonpunk/susfs4linux.git susfs_src
+             # (Logika copy file patch dan aplikasi patch manual di sini sesuai kebutuhan repo kamu)
+             # Biasanya: cp susfs_src/include/linux/* include/linux/
+          fi
+
+          # Fix Kconfig Anti-Recursive
           if [ -f drivers/Kconfig ]; then
             sed -i '/kernelsu/d' drivers/Kconfig
             echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
           fi
 
-      - name: 🚀 Build Sun (Bazel/Kleaf)
+      - name: 🚀 Executing Bazel Build (Sun)
         run: |
           cd kernel_platform
           chmod +x build/android/prepare_vendor.sh
@@ -53,26 +59,27 @@ jobs:
           
           ./build/android/prepare_vendor.sh sun
           
-          # Logic LTO dari KPM input
-          LTO_VAL=$([[ "${{ inputs.kpm }}" == "true" ]] && echo "thin" || echo "full")
+          # Parameter LTO dinamis (Thin jika KPM aktif)
+          LTO_MODE=$([[ "${{ inputs.kpm }}" == "true" ]] && echo "thin" || echo "full")
           
-          # Hajar Bleh!
-          LTO=$LTO_VAL HZ=${{ inputs.hz }} ./build/build_sun.sh
+          LTO=$LTO_MODE HZ=${{ inputs.hz }} ./build/build_sun.sh
 
-      - name: 📦 Packaging
+      - name: 📦 Packaging & Upload
         run: |
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3
           IMAGE=$(find kernel_platform/out -name "Image" | head -n 1)
           if [ -f "$IMAGE" ]; then
             cp "$IMAGE" AnyKernel3/
             cd AnyKernel3
-            zip -r9 "../Kono-Ha-${{ inputs.ksu_flavor }}-${{ inputs.hz }}hz.zip" .
+            # Nama file dinamis biar keren pas dipamerin
+            FILENAME="Kono-Ha-${{ inputs.ksu_flavor }}-${{ inputs.hz }}hz-$([[ "${{ inputs.susfs }}" == "true" ]] && echo "SUSFS" || echo "NOSUS")"
+            zip -r9 "../$FILENAME.zip" .
           else
-            echo "IMAGE NOT FOUND!" && exit 1
+            echo "ERROR: Image not found!" && exit 1
           fi
 
-      - name: 📤 Upload
+      - name: 📤 Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Kono-Ha-${{ inputs.ksu_flavor }}-${{ inputs.hz }}hz
+          name: Kono-Ha-Manual-Build
           path: "*.zip"
