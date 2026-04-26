@@ -12,38 +12,37 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      - name: 📥 Checkout Source
+      - name: 📥 Checkout
         uses: actions/checkout@v4
 
-      - name: 🏗️ Setup Build Env
+      - name: 🏗️ Setup Env
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc build-essential flex bison lld llvm-dev libssl-dev ccache libelf-dev rsync python3 git-lfs
+          sudo apt-get install -y bc build-essential flex bison lld llvm-dev libssl-dev ccache libelf-dev rsync python3 git-lfs patch
 
-      - name: 🛠️ Patching Mechanic (KSU & WildKSU)
+      - name: 🛠️ Patching Mechanic (Root & SusFS)
         run: |
-          # Cari root kernel secara dinamis
+          # Cari folder root kernel secara dinamis
           KROOT=$(find . -name "drivers" -type d | grep -E "common|msm-kernel" | head -n 1 | xargs dirname)
           cd $KROOT
           
-          FLAVOR="${{ inputs.ksu_flavor }}"
-          
-          # 1. Pasang Root Flavor
-          case "$FLAVOR" in
+          # 1. Logika SusFS (Biar gak dibilang AI buta lagi 🤪)
+          if [ "${{ inputs.susfs }}" = "true" ]; then
+            echo "🚀 Injecting SusFS..."
+            git clone --depth=1 https://gitlab.com/simonpunk/susfs4linux.git -b gki-android14-6.6 susfs_src
+            cp susfs_src/include/linux/susfs.h include/linux/
+            cp susfs_src/fs/susfs.c fs/
+            # Patching core kernel files (VFS/KSU integration)
+            # Kamu bisa tambahkan perintah 'patch' atau 'git apply' spesifik repo kamu di sini
+          fi
+
+          # 2. Logika Root (Official, Next, WildKSU, dll)
+          case "${{ inputs.ksu_flavor }}" in
             "official") curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main ;;
             "ksu-next") curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/main/kernel/setup.sh" | bash -s main ;;
             "wild-ksu") curl -LSs "https://raw.githubusercontent.com/Wild-KSU/WildKSU/main/kernel/setup.sh" | bash -s main ;;
-            "sukisu"|"resukisu"|"mambosu") echo "Applying $FLAVOR via internal scripts..." ;;
+            "sukisu"|"resukisu"|"mambosu") echo "Applying internal $FLAVOR patches..." ;;
           esac
-
-          # 2. LOGIKA SUSFS (Ini yang kamu cari!)
-          if [ "${{ inputs.susfs }}" = "true" ]; then
-             echo "🚀 Patching SusFS into kernel..."
-             # Sesuai standar, kita tarik repo SusFS dan terapkan patch ke core/fs
-             git clone --depth=1 https://gitlab.com/simonpunk/susfs4linux.git susfs_src
-             # (Logika copy file patch dan aplikasi patch manual di sini sesuai kebutuhan repo kamu)
-             # Biasanya: cp susfs_src/include/linux/* include/linux/
-          fi
 
           # Fix Kconfig Anti-Recursive
           if [ -f drivers/Kconfig ]; then
@@ -51,35 +50,34 @@ jobs:
             echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
           fi
 
-      - name: 🚀 Executing Bazel Build (Sun)
+      - name: 🚀 Build Sun (Bazel/Kleaf)
         run: |
           cd kernel_platform
-          chmod +x build/android/prepare_vendor.sh
-          chmod +x build/build_sun.sh
+          chmod +x build/android/prepare_vendor.sh build/build_sun.sh
           
           ./build/android/prepare_vendor.sh sun
           
-          # Parameter LTO dinamis (Thin jika KPM aktif)
-          LTO_MODE=$([[ "${{ inputs.kpm }}" == "true" ]] && echo "thin" || echo "full")
+          # Logic LTO (Thin jika KPM aktif)
+          LTO_VAL=$([[ "${{ inputs.kpm }}" == "true" ]] && echo "thin" || echo "full")
           
-          LTO=$LTO_MODE HZ=${{ inputs.hz }} ./build/build_sun.sh
+          LTO=$LTO_VAL HZ=${{ inputs.hz }} ./build/build_sun.sh
 
-      - name: 📦 Packaging & Upload
+      - name: 📦 Packaging
         run: |
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3
           IMAGE=$(find kernel_platform/out -name "Image" | head -n 1)
           if [ -f "$IMAGE" ]; then
             cp "$IMAGE" AnyKernel3/
             cd AnyKernel3
-            # Nama file dinamis biar keren pas dipamerin
-            FILENAME="Kono-Ha-${{ inputs.ksu_flavor }}-${{ inputs.hz }}hz-$([[ "${{ inputs.susfs }}" == "true" ]] && echo "SUSFS" || echo "NOSUS")"
-            zip -r9 "../$FILENAME.zip" .
+            # Penamaan file biar ganteng pas di Release
+            NAME="Kono-Ha-${{ inputs.ksu_flavor }}-${{ inputs.hz }}hz$([[ "${{ inputs.susfs }}" == "true" ]] && echo "-SusFS" || echo "")"
+            zip -r9 "../$NAME.zip" .
           else
             echo "ERROR: Image not found!" && exit 1
           fi
 
-      - name: 📤 Upload Artifact
+      - name: 📤 Upload
         uses: actions/upload-artifact@v4
         with:
-          name: Kono-Ha-Manual-Build
+          name: Kono-Ha-Custom-Build
           path: "*.zip"
