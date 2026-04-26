@@ -21,25 +21,30 @@ on:
           - wild-ksu
           - none
         default: 'ksu-next'
+      include_susfs:
+        description: 'Suntik SusFS (Hide Root)?'
+        required: true
+        type: boolean
+        default: false
       use_kpm:
-        description: 'Aktifkan KPM?'
+        description: 'Aktifkan KPM (Kernel Patch Module)?'
         required: true
         type: boolean
         default: false
       use_hardened:
-        description: 'Mode Hardened?'
+        description: 'Mode Hardened (Security)?'
         required: true
         type: boolean
         default: false
 
 jobs:
-  launch:
-    # Memanggil file logika
+  launch_engine:
+    # Manggil file logic di bawah
     uses: ./.github/workflows/konoha-logic.yml
     with:
       hz: ${{ github.event.inputs.hz }}
       ksu_flavor: ${{ github.event.inputs.ksu_flavor }}
-      # Konversi eksplisit agar tidak dianggap string 'true'/'false'
+      susfs: ${{ github.event.inputs.include_susfs == 'true' }}
       kpm: ${{ github.event.inputs.use_kpm == 'true' }}
       hardened: ${{ github.event.inputs.use_hardened == 'true' }}
     secrets: inherit
