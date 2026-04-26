@@ -1,9 +1,9 @@
-name: 🚀 Kono-Ha Manual Build (UI)
+name: Kono-Ha Manual Build UI
 on:
   workflow_dispatch:
     inputs:
       hz:
-        description: 'Pilih Responsivitas (HZ)'
+        description: 'Pilih HZ'
         required: true
         type: choice
         options: ['100', '250', '500', '1000']
@@ -15,36 +15,29 @@ on:
         options: ['stock', 'root', 'susfs']
         default: 'root'
       ksu_flavor:
-        description: 'Pilih Rasa Root (Hanya jika varian root/susfs)'
+        description: 'Pilih Root Flavor'
         required: true
         type: choice
-        options:
-          - official
-          - ksu-next
-          - sukisu
-          - resukisu
-          - mambosu
-          - wild-ksu
-          - none
+        options: ['ksu-next', 'sukisu', 'resukisu', 'mambosu', 'wild-ksu', 'official', 'none']
         default: 'ksu-next'
       kpm:
-        description: 'Aktifkan KPM (Kernel Patch Module)?'
+        description: 'Aktifkan KPM?'
         required: true
         type: boolean
         default: false
       hardened:
-        description: 'Gunakan Mode Hardened?'
+        description: 'Mode Hardened?'
         required: true
         type: boolean
         default: false
 
 jobs:
-  trigger-engine:
+  call-engine:
     uses: ./.github/workflows/konoha-engine.yml
     with:
-      hz: ${{ inputs.hz }}
-      variant: ${{ inputs.variant }}
-      ksu_flavor: ${{ inputs.ksu_flavor }}
-      kpm: ${{ inputs.kpm }}
-      hardened: ${{ inputs.hardened }}
+      hz: ${{ github.event.inputs.hz }}
+      variant: ${{ github.event.inputs.variant }}
+      ksu_flavor: ${{ github.event.inputs.ksu_flavor }}
+      kpm: ${{ github.event.inputs.kpm == 'true' }}
+      hardened: ${{ github.event.inputs.hardened == 'true' }}
     secrets: inherit
