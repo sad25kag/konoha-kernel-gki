@@ -9,7 +9,7 @@ on:
         options: ['100', '250', '500', '1000']
         default: '500'
       ksu_flavor:
-        description: 'Pilih Varian Root'
+        description: 'Pilih Rasa Root'
         required: true
         type: choice
         options:
@@ -27,23 +27,24 @@ on:
         type: boolean
         default: false
       use_kpm:
-        description: 'Aktifkan KPM (Kernel Patch Module)?'
+        description: 'Aktifkan KPM?'
         required: true
         type: boolean
         default: false
       use_hardened:
-        description: 'Mode Hardened (Security)?'
+        description: 'Mode Hardened?'
         required: true
         type: boolean
         default: false
 
 jobs:
-  launch_engine:
-    # Manggil file logic di bawah
+  launch:
+    # Memanggil file logika konoha-logic.yml
     uses: ./.github/workflows/konoha-logic.yml
     with:
       hz: ${{ github.event.inputs.hz }}
       ksu_flavor: ${{ github.event.inputs.ksu_flavor }}
+      # Konversi eksplisit ke boolean agar tidak error parser
       susfs: ${{ github.event.inputs.include_susfs == 'true' }}
       kpm: ${{ github.event.inputs.use_kpm == 'true' }}
       hardened: ${{ github.event.inputs.use_hardened == 'true' }}
