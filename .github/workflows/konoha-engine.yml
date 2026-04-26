@@ -1,76 +1,72 @@
-name: ⚙️ Kono-Ha Build Engine
+name: Konoha Build Engine
 on:
   workflow_call:
     inputs:
-      hz: { required: true, type: string }
-      variant: { required: true, type: string }
-      ksu_flavor: { required: true, type: string }
-      kpm: { required: true, type: boolean }
-      hardened: { required: true, type: boolean }
+      hz:
+        type: string
+        required: true
+      variant:
+        type: string
+        required: true
+      ksu_flavor:
+        type: string
+        required: true
+      kpm:
+        type: boolean
+        required: true
+      hardened:
+        type: boolean
+        required: true
 
 jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout Source
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
 
-      - name: Setup Build Env
+      - name: Setup Env
         run: |
           sudo apt-get update
           sudo apt-get install -y bc build-essential flex bison lld llvm-dev libssl-dev ccache libelf-dev rsync python3 git-lfs
 
-      - name: 🛠️ Patching Mechanic (Root & Features)
+      - name: Patch Root
         run: |
-          # Cari folder root kernel (msm-kernel/common)
+          # Mekanik pencarian root kernel kamu
           KROOT=$(find . -name "drivers" -type d | grep -E "common|msm-kernel" | head -n 1 | xargs dirname)
           cd $KROOT
           
-          FLAVOR="${{ inputs.ksu_flavor }}"
-          
-          # Logika Suntik Root - Termasuk WildKSU
-          case "$FLAVOR" in
-            "official")
-              curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main ;;
-            "ksu-next")
-              curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/main/kernel/setup.sh" | bash -s main ;;
-            "wild-ksu")
-              curl -LSs "https://raw.githubusercontent.com/Wild-KSU/WildKSU/main/kernel/setup.sh" | bash -s main ;;
-            "sukisu"|"resukisu"|"mambosu")
-              echo "Applying $FLAVOR patch from your internal mechanic..." ;;
+          case "${{ inputs.ksu_flavor }}" in
+            "ksu-next") curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/main/kernel/setup.sh" | bash -s main ;;
+            "wild-ksu") curl -LSs "https://raw.githubusercontent.com/Wild-KSU/WildKSU/main/kernel/setup.sh" | bash -s main ;;
+            "official") curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main ;;
           esac
 
-          # Fix Kconfig (Menjaga agar tidak recursive dependency)
+          # Fix Kconfig
           sed -i '/kernelsu/d' drivers/Kconfig
           echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
 
-      - name: 🚀 Executing Bazel Build (Miro/Sun)
+      - name: Build Bazel
         run: |
-          # Pindah ke folder platform sesuai struktur repo kamu
           cd kernel_platform
           chmod +x build/android/prepare_vendor.sh
           chmod +x build/build_sun.sh
-          
           ./build/android/prepare_vendor.sh sun
           
-          # Logika LTO & KPM sesuai mekanik build.yml asli kamu
-          LTO_MODE=${{ inputs.kpm && 'thin' || 'full' }}
+          # Gunakan ternary logic yang lebih aman
+          LTO_VAL=$([[ "${{ inputs.kpm }}" == "true" ]] && echo "thin" || echo "full")
           
-          # Eksekusi build_sun.sh dengan parameter input
-          LTO=$LTO_MODE HZ=${{ inputs.hz }} ./build/build_sun.sh
-          
-      - name: 📦 Finishing Package
+          LTO=$LTO_VAL HZ=${{ inputs.hz }} ./build/build_sun.sh
+
+      - name: Upload
         run: |
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3
-          # Cari Image di folder out Kleaf
           IMAGE=$(find out -name "Image" | head -n 1)
           cp "$IMAGE" AnyKernel3/
           cd AnyKernel3
-          zip -r9 "../Kono-Ha-${{ inputs.variant }}-${{ inputs.ksu_flavor }}-${{ inputs.hz }}hz.zip" .
+          zip -r9 "../Kono-Ha-${{ inputs.ksu_flavor }}-${{ inputs.hz }}hz.zip" .
           
-      - name: 📤 Upload
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Kono-Ha-${{ inputs.ksu_flavor }}-${{ inputs.hz }}hz
