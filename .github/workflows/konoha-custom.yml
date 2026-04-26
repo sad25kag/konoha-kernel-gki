@@ -1,0 +1,45 @@
+name: 🚀 Kono-Ha Custom Build
+on:
+  workflow_dispatch:
+    inputs:
+      hz:
+        description: 'Pilih HZ (Responsivitas)'
+        required: true
+        type: choice
+        options: ['100', '250', '500', '1000']
+        default: '500'
+      ksu_flavor:
+        description: 'Pilih Varian Root'
+        required: true
+        type: choice
+        options:
+          - official
+          - ksu-next
+          - sukisu
+          - resukisu
+          - mambosu
+          - wild-ksu
+          - none
+        default: 'ksu-next'
+      use_kpm:
+        description: 'Aktifkan KPM?'
+        required: true
+        type: boolean
+        default: false
+      use_hardened:
+        description: 'Mode Hardened?'
+        required: true
+        type: boolean
+        default: false
+
+jobs:
+  launch:
+    # Memanggil file logika
+    uses: ./.github/workflows/konoha-logic.yml
+    with:
+      hz: ${{ github.event.inputs.hz }}
+      ksu_flavor: ${{ github.event.inputs.ksu_flavor }}
+      # Konversi eksplisit agar tidak dianggap string 'true'/'false'
+      kpm: ${{ github.event.inputs.use_kpm == 'true' }}
+      hardened: ${{ github.event.inputs.use_hardened == 'true' }}
+    secrets: inherit
