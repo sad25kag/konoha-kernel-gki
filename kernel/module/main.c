@@ -2550,105 +2550,22 @@ void flush_module_init_free_work(void)
 static bool async_probe;
 module_param(async_probe, bool, 0644);
 
-/*
- * MCA Bypass Charging Enhancement - Dynamic Patch for Xiaomi (Miro/General)
- * * Optimized for Kernel 6.6 GKI.
- * This version uses symbol lookups to prevent bootloops caused by 
- * firmware-specific binary offsets.
- */
-
 #ifdef CONFIG_ARM64
-#include <linux/kprobes.h>
-#include <linux/kallsyms.h>
 #include <asm/patching.h>
 
-/* ========================================================================
- * Kprobe: Intercept mca_vote() 
- * Tetap menggunakan kprobe karena mca_vote adalah simbol global yang stabil.
- * ======================================================================== */
-static int pre_mca_vote(struct kprobe *p, struct pt_regs *regs)
+static void mca_live_patch(struct module *mod)
 {
-	const char *client = (const char *)regs->regs[1];
-	int state = (int)regs->regs[2];
-
-	if (state == 1 && client && (unsigned long)client > 0x1000) {
-		// Force Current Limit ke 5000mA
-		if (strcmp(client, "mca_thermal") == 0 ||
-		    strcmp(client, "icl_limit") == 0 ||
-		    strcmp(client, "jeita") == 0 ||
-		    strcmp(client, "usbicl") == 0) {
-			regs->regs[3] = 5000;
-		}
-		// Force Voltage Limit ke 11000mV
-		else if (strcmp(client, "volt_thermal_limit") == 0 ||
-			 strcmp(client, "volt_limit") == 0) {
-			regs->regs[3] = 11000;
-		}
-	}
-	return 0;
-}
-
-static struct kprobe kp_mca_vote = {
-	.symbol_name = "mca_vote",
-	.pre_handler = pre_mca_vote,
-};
-
-/* ========================================================================
- * Dynamic Patching Logic
- * Menggunakan kallsyms_lookup_name untuk mencari alamat fungsi asli
- * ======================================================================== */
-static void apply_dynamic_mca_patch(struct module *mod)
-{
-	static bool kp_registered = false;
-
 	if (!mod || !mod->name)
 		return;
-
-	// Registrasi Kprobe saat mca_common load
-	if (!kp_registered && strcmp(mod->name, "mca_common") == 0) {
-		if (register_kprobe(&kp_mca_vote) >= 0) kp_registered = true;
-	}
-
-	/* --- mca_smart_charge (Berdasarkan file .ko yang diupload) --- */
+	/* Bypass charging */
 	if (strcmp(mod->name, "mca_smart_charge") == 0) {
-		unsigned long func_addr;
-
-		/* [1] Patch: smart_charge_check_bypass_status
-		 * Kita memaksa fungsi ini untuk tidak pernah melakukan "exit bypass"
-		 */
-		func_addr = kallsyms_lookup_name("smart_charge_check_bypass_status");
-		if (func_addr) {
-			// NOP-kan instruksi yang mereset status bypass
-			// Offset dihitung secara relatif terhadap fungsi, bukan modul base
-			aarch64_insn_patch_text_nosync((void *)(func_addr + 0x5c), 0xd503201f);
-		}
-
-		/* [2] Patch: mca_smartchg_get_limit_soc
-		 * Memaksa ambang batas SoC agar bypass selalu aktif
-		 */
-		func_addr = kallsyms_lookup_name("mca_smartchg_get_limit_soc");
-		if (func_addr) {
-			// Mengganti instruksi awal fungsi agar selalu return 100
-			// mov w0, #100; ret;
-			aarch64_insn_patch_text_nosync((void *)func_addr, 0x52800c80);
-			aarch64_insn_patch_text_nosync((void *)(func_addr + 4), 0xd65f03c0);
+		void *text = mod->mem[MOD_TEXT].base;
+		if (text) {
+			pr_info("Live-patching mca_smart_charge %p\n", text);
+			/* Force jump to bypass continue: b +0x144 (b.lt 2124 -> b 2258) */
+			aarch64_insn_patch_text_nosync(text + 0x2114, 0x14000051);
 		}
 	}
-
-	/* --- mca_strategy_buckchg (Safety Patch) --- */
-	else if (strcmp(mod->name, "mca_strategy_buckchg") == 0) {
-		unsigned long func_addr = kallsyms_lookup_name("strategy_buckchg_soc_limit_sts_callback");
-		if (func_addr) {
-			// Memaksa jalur non-stepper agar ICL tidak turun ke 0 (suspend)
-			// Mengganti cbz menjadi unconditional branch
-			aarch64_insn_patch_text_nosync((void *)(func_addr + 0x40), 0x14000008);
-		}
-	}
-}
-
-/* Integrasi ke module notifier kernel Anda */
-void mca_patch_handler(struct module *mod) {
-    apply_dynamic_mca_patch(mod);
 }
 #endif
 
