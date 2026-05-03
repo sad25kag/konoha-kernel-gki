@@ -32,6 +32,8 @@ on:
           - sukisu
           - resukisu
           - mambosu
+          - apatch
+          - folkpatch
         default: resukisu
       kpm:
         description: 'Kernel Patch Module (KPM)'
